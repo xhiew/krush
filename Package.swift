@@ -11,7 +11,7 @@ let package = Package(
     products: [
         .library(
             name: "Krush",
-            targets: ["KRCore", "KRWire"]
+            targets: ["KRCore", "KRWire", "KRTransport", "KRFile"]
         )
     ],
     targets: [
@@ -28,6 +28,20 @@ let package = Package(
                 .enableUpcomingFeature("ApproachableConcurrency")
             ]
         ),
+        .target(
+            name: "KRTransport",
+            dependencies: ["KRCore", "KRWire"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
+        .target(
+            name: "KRFile",
+            dependencies: ["KRCore", "KRWire", "KRTransport"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
         .testTarget(
             name: "KRCoreTests",
             dependencies: ["KRCore"],
@@ -38,6 +52,20 @@ let package = Package(
         .testTarget(
             name: "KRWireTests",
             dependencies: ["KRWire", "KRCore"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "KRTransportTests",
+            dependencies: ["KRTransport", "KRWire", "KRCore"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "KRFileTests",
+            dependencies: ["KRFile", "KRTransport", "KRWire", "KRCore"],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency")
             ]

@@ -1,3 +1,10 @@
+//
+//  KRErrorTests.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 import Testing
 @testable import KRCore
 
@@ -11,6 +18,15 @@ struct KRErrorTests {
         #expect(KRError.statusRejected(status: 1, reason: "a") != .statusRejected(status: 1, reason: "b"))
         #expect(KRError.deviceDebugFrame(text: "x") != .deviceDebugFrame(text: "y"))
         #expect(KRError.frameMissingDelimiters != .frameTooShort(length: 0))
+        #expect(KRError.timeout(requestID: 0x300) == .timeout(requestID: 0x300))
+        #expect(KRError.timeout(requestID: 0x300) != .timeout(requestID: 0x301))
+        #expect(KRError.transportFailure(operation: "a", status: 1) != .transportFailure(operation: "a", status: 2))
+        #expect(KRError.transportFailure(operation: "a", status: 1) != .transportFailure(operation: "b", status: 1))
+        #expect(KRError.malformedResponse(reason: "a") != .malformedResponse(reason: "b"))
+        #expect(KRError.cancelled != .disconnected)
+        #expect(KRError.disconnected != .alreadyConnected)
+        #expect(KRError.cancelled != .alreadyConnected)
+        #expect(KRError.deviceNotFound != .disconnected)
     }
     
     @Test(arguments: [
@@ -18,7 +34,14 @@ struct KRErrorTests {
         .frameTooShort(length: 6),
         .invalidDataByte(offset: 2, value: 0x80),
         .statusRejected(status: 1, reason: "invalid id"),
-        .deviceDebugFrame(text: "err")
+        .deviceDebugFrame(text: "err"),
+        .timeout(requestID: 0x300),
+        .disconnected,
+        .alreadyConnected,
+        .cancelled,
+        .deviceNotFound,
+        .transportFailure(operation: "MIDIClientCreateWithBlock", status: -10830),
+        .malformedResponse(reason: "short payload")
     ])
     func descriptionIsNotEmpty(error: KRError) {
         #expect(!error.description.isEmpty)
@@ -34,5 +57,15 @@ struct KRErrorTests {
             == "Device rejected the request with status 0x01: invalid id")
         #expect(KRError.deviceDebugFrame(text: "err pattern").description
             == "Device debug frame: err pattern")
+        #expect(KRError.timeout(requestID: 0x300).description == "Request 0x300 timed out")
+        #expect(KRError.timeout(requestID: 0x0).description == "Request 0x0 timed out")
+        #expect(KRError.disconnected.description == "Transport is not connected")
+        #expect(KRError.alreadyConnected.description == "Transport is already connected")
+        #expect(KRError.cancelled.description == "Operation was cancelled")
+        #expect(KRError.deviceNotFound.description == "No matching device was found")
+        #expect(KRError.transportFailure(operation: "MIDISendEventList", status: -50).description
+            == "MIDISendEventList failed with status -50")
+        #expect(KRError.malformedResponse(reason: "short payload").description
+            == "Malformed response: short payload")
     }
 }
