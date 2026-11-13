@@ -1,3 +1,10 @@
+//
+//  FileOpcode.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 /// DELETE is the bare `06` + fid, never `06 02`. MOVE (`0x0C`) is left out: unverified.
 public struct FileOpcode: Hashable, Sendable {
     public let bytes: [UInt8]

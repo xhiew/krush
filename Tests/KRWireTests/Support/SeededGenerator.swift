@@ -1,3 +1,10 @@
+//
+//  SeededGenerator.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
     

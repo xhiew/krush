@@ -1,3 +1,10 @@
+//
+//  RequestIDGenerator.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 /// Wraps `0xFFF` → `0x000` (not back to `0x300`), like both references.
 public struct RequestIDGenerator: Sendable {
     private var current: UInt16

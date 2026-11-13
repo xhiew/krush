@@ -1,3 +1,10 @@
+//
+//  RequestID.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 public struct RequestID: Hashable, Sendable {
     public let value: UInt16
     

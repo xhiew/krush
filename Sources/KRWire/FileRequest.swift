@@ -1,3 +1,10 @@
+//
+//  FileRequest.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 public struct FileRequest: Equatable, Sendable {
     public let product: Product
     public let id: RequestID

@@ -1,3 +1,10 @@
+//
+//  Packed7.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 import KRCore
 
 /// Each group of up to 7 raw bytes → 1 flag byte + the bytes masked with `0x7F`.

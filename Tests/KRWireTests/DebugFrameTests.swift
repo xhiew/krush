@@ -1,3 +1,10 @@
+//
+//  DebugFrameTests.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 import KRCore
 import Testing
 @testable import KRWire

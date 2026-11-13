@@ -1,3 +1,10 @@
+//
+//  ASCIITrim.swift
+//  Krush
+//
+//  Created by xhiew on 13/11/26.
+//
+
 enum ASCIITrim {
     static let reasonSet: Set<UInt8> = [0x00, 0x20]
     
