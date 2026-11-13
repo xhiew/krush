@@ -70,3 +70,11 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+
+# lmkit agent scratch space (never commit)
+lmkit/
+
+# AI tooling (Claude Code, lmkit) — local only
+.claude/
+CLAUDE.md
+CLAUDE.local.md
