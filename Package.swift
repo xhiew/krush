@@ -1,4 +1,4 @@
-// swift-tools-version: 6.4
+// swift-tools-version: 6.0
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -6,31 +6,41 @@ import PackageDescription
 let package = Package(
     name: "Krush",
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14),
+        .iOS(.v17)
     ],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "Krush",
-            targets: ["Krush"]
-        ),
+            targets: ["KRCore", "KRWire"]
+        )
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "Krush",
+            name: "KRCore",
             swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
-            ],
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
+        .target(
+            name: "KRWire",
+            dependencies: ["KRCore"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
         ),
         .testTarget(
-            name: "KrushTests",
-            dependencies: ["Krush"],
+            name: "KRCoreTests",
+            dependencies: ["KRCore"],
             swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
-            ],
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
         ),
+        .testTarget(
+            name: "KRWireTests",
+            dependencies: ["KRWire", "KRCore"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        )
     ]
 )
