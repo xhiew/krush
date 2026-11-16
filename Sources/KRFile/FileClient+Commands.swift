@@ -40,4 +40,23 @@ extension FileClient {
             return try FileCodec.stat(payload)
         }
     }
+    
+    public func play(fid: UInt16) async throws(KRError) {
+        try await withGate { () async throws(KRError) -> Void in
+            try self.ensureNotInterrupted()
+            try await self.reinitIfIdle()
+            _ = try await self.performRequest(FileCodec.playRequest(fid: fid), timeout: nil)
+        }
+    }
+    
+    package func delete(fid: UInt16) async throws(KRError) {
+        try await withGate { () async throws(KRError) -> Void in
+            try await self.prepareMutation()
+            try await self.reinitIfIdle()
+            _ = try await self.performRequest(
+                FileCodec.deleteRequest(fid: fid),
+                timeout: self.configuration.deleteTimeout
+            )
+        }
+    }
 }

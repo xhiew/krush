@@ -33,7 +33,7 @@ public actor FileClient {
     
     private let transport: any Transport
     private let product: Product
-    private let configuration: FileClientConfiguration
+    let configuration: FileClientConfiguration
     private var ids = RequestIDGenerator()
     
     public private(set) var chunkSize = FileCodec.defaultChunkSize
@@ -44,6 +44,7 @@ public actor FileClient {
     private var halted: String?
     private var debugCount = 0
     private(set) var lastSuccess = ContinuousClock.now
+    private var listeningSince = ContinuousClock.now
     
     private(set) var mailbox: [ParsedFrame] = []
     private var frameWaiter: FrameWaiter?
@@ -54,14 +55,25 @@ public actor FileClient {
     private var gateQueue: [GateWaiter] = []
     private var nextGateID: UInt64 = 0
     
+    public private(set) var transferInterrupted: Bool
+    private let onInterruptedTransferChange: (@Sendable (Bool) -> Void)?
+    
     public init(
         transport: any Transport,
         product: Product,
-        configuration: FileClientConfiguration = .init()
+        configuration: FileClientConfiguration = .init(),
+        interruptedTransfer: Bool = false,
+        onInterruptedTransferChange: (@Sendable (Bool) -> Void)? = nil
     ) {
         self.transport = transport
         self.product = product
         self.configuration = configuration
+        self.transferInterrupted = interruptedTransfer
+        self.onInterruptedTransferChange = onInterruptedTransferChange
+    }
+    
+    var currentSession: UInt64 {
+        sessionID
     }
     
     var isHalted: Bool {
@@ -92,6 +104,7 @@ public actor FileClient {
             throw KRError.disconnected
         }
         pump = startPump(stream: stream, session: session)
+        listeningSince = .now
         do throws(KRError) {
             try await settleSession()
             guard session == sessionID else {
@@ -136,18 +149,30 @@ public actor FileClient {
     }
     
     func performRequest(_ raw: [UInt8], timeout: Duration?) async throws(KRError) -> [UInt8] {
+        var didSend = false
+        return try await performRequest(raw, timeout: timeout, didSend: &didSend)
+    }
+    
+    /// `didSend` turns true once the frame left the transport, before waiting for the reply.
+    func performRequest(
+        _ raw: [UInt8],
+        timeout: Duration?,
+        honorsCancellation: Bool = true,
+        didSend: inout Bool
+    ) async throws(KRError) -> [UInt8] {
         if let text = halted {
             throw KRError.deviceDebugFrame(text: text)
         }
         guard state == .connected, holderSession == sessionID else {
             throw KRError.disconnected
         }
-        if Task.isCancelled {
+        if honorsCancellation, Task.isCancelled {
             throw KRError.cancelled
         }
         let session = sessionID
         let id = ids.next()
         try await transport.send(SysExFrame.fileRequest(product: product, id: id, payload: raw))
+        didSend = true
         guard session == sessionID else {
             throw KRError.disconnected
         }
@@ -170,7 +195,7 @@ public actor FileClient {
             }
         }
         // A sent request keeps the gate until here even if its Task was cancelled.
-        if Task.isCancelled {
+        if honorsCancellation, Task.isCancelled {
             throw KRError.cancelled
         }
         guard session == sessionID else {
@@ -180,10 +205,14 @@ public actor FileClient {
         throw KRError.timeout(requestID: id.value)
     }
     
-    private func initialize() async throws(KRError) {
+    /// Gate holder only.
+    func initialize(honorsCancellation: Bool = true) async throws(KRError) {
+        var didSend = false
         let payload = try await performRequest(
             FileCodec.initRequest(flags: configuration.initFlags, maxResponseLength: configuration.maxResponseLength),
-            timeout: nil
+            timeout: nil,
+            honorsCancellation: honorsCancellation,
+            didSend: &didSend
         )
         chunkSize = FileCodec.chunkSize(initResponse: payload)
     }
@@ -192,6 +221,70 @@ public actor FileClient {
     func reinitIfIdle() async throws(KRError) {
         guard ContinuousClock.now - lastSuccess > configuration.idleReinit else { return }
         try await initialize()
+    }
+    
+    /// Gate holder only. Call before any frame of a write command is sent.
+    func prepareMutation() async throws(KRError) {
+        if let text = halted {
+            throw KRError.deviceDebugFrame(text: text)
+        }
+        try ensureNotInterrupted()
+        let remaining = configuration.mutationPreflight - (ContinuousClock.now - listeningSince)
+        if remaining > .zero {
+            try await listen(for: remaining, session: sessionID)
+        }
+    }
+    
+    // MARK: - Interrupted transfer lock
+    
+    /// Same checks `performRequest` makes before sending; call before taking the lock so a request that cannot leave never locks.
+    func ensureCanStartTransfer() throws(KRError) {
+        if let text = halted {
+            throw KRError.deviceDebugFrame(text: text)
+        }
+        guard state == .connected, holderSession == sessionID else {
+            throw KRError.disconnected
+        }
+        if Task.isCancelled {
+            throw KRError.cancelled
+        }
+    }
+    
+    func markTransferInterrupted() {
+        setTransferInterrupted(true)
+    }
+    
+    /// A transfer that ended cleanly, or never reached the device.
+    func releaseTransferLock() {
+        setTransferInterrupted(false)
+    }
+    
+    func ensureNotInterrupted() throws(KRError) {
+        if transferInterrupted {
+            throw KRError.transferInterrupted
+        }
+    }
+    
+    /// Call only after the user power-cycled the device.
+    public func clearInterruptedTransfer() throws(KRError) {
+        guard state == .disconnected else {
+            throw KRError.invalidArgument(reason: "disconnect first")
+        }
+        setTransferInterrupted(false)
+    }
+    
+    private func setTransferInterrupted(_ value: Bool) {
+        guard transferInterrupted != value else { return }
+        transferInterrupted = value
+        onInterruptedTransferChange?(value)
+    }
+    
+    func pause(_ duration: Duration) async throws(KRError) {
+        do {
+            try await Task.sleep(for: duration)
+        } catch {
+            throw KRError.cancelled
+        }
     }
     
     private func settleSession() async throws(KRError) {
@@ -205,7 +298,7 @@ public actor FileClient {
     }
     
     /// Discards everything except debug frames, which end the wait with an error.
-    private func listen(for duration: Duration, session: UInt64) async throws(KRError) {
+    func listen(for duration: Duration, session: UInt64) async throws(KRError) {
         guard session == sessionID else {
             throw KRError.disconnected
         }

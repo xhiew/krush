@@ -75,19 +75,29 @@ enum FileCodec {
         )
     }
     
-    private static func bigEndian(_ value: UInt16) -> [UInt8] {
+    /// Printable ASCII only (0x20...0x7E), non-empty; also rules out NUL.
+    static func validateText(_ text: String, field: String) throws(KRError) {
+        guard !text.isEmpty else {
+            throw KRError.invalidArgument(reason: "\(field) is empty")
+        }
+        guard text.utf8.allSatisfy({ (0x20...0x7E).contains($0) }) else {
+            throw KRError.invalidArgument(reason: "\(field) must be printable ASCII")
+        }
+    }
+    
+    static func bigEndian(_ value: UInt16) -> [UInt8] {
         [UInt8(value >> 8), UInt8(value & 0xFF)]
     }
     
-    private static func bigEndian(_ value: UInt32) -> [UInt8] {
+    static func bigEndian(_ value: UInt32) -> [UInt8] {
         [UInt8(value >> 24), UInt8((value >> 16) & 0xFF), UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF)]
     }
     
-    private static func readUInt16(_ bytes: [UInt8], at offset: Int) -> UInt16 {
+    static func readUInt16(_ bytes: [UInt8], at offset: Int) -> UInt16 {
         (UInt16(bytes[offset]) << 8) | UInt16(bytes[offset + 1])
     }
     
-    private static func readUInt32(_ bytes: [UInt8], at offset: Int) -> UInt32 {
+    static func readUInt32(_ bytes: [UInt8], at offset: Int) -> UInt32 {
         (UInt32(readUInt16(bytes, at: offset)) << 16) | UInt32(readUInt16(bytes, at: offset + 2))
     }
 }

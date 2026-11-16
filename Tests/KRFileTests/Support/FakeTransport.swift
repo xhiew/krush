@@ -21,7 +21,10 @@ actor FakeTransport: Transport {
     private var continuation: AsyncStream<[UInt8]>.Continuation?
     private var deferredContinuations: [AsyncStream<[UInt8]>.Continuation] = []
     private var sentWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
-    
+    private var holdPredicate: (@Sendable ([UInt8]) -> Bool)?
+    private var heldSend: CheckedContinuation<Void, Never>?
+    private var heldWaiters: [CheckedContinuation<Void, Never>] = []
+
     /// With `autoReplyInit`, INIT requests are answered here and kept out of `sentFrames`.
     private(set) var sentFrames: [[UInt8]] = []
     private(set) var initFrames: [[UInt8]] = []
@@ -75,6 +78,17 @@ actor FakeTransport: Transport {
     func send(_ frame: [UInt8]) async throws(KRError) {
         guard let target = continuation else {
             throw KRError.disconnected
+        }
+        if let predicate = holdPredicate, predicate(frame) {
+            holdPredicate = nil
+            await withCheckedContinuation { continuation in
+                heldSend = continuation
+                let waiters = heldWaiters
+                heldWaiters.removeAll()
+                for waiter in waiters {
+                    waiter.resume()
+                }
+            }
         }
         if autoReplyInit, Self.isInit(frame) {
             initFrames.append(frame)
@@ -155,6 +169,23 @@ actor FakeTransport: Transport {
         deferredContinuations.removeAll()
     }
     
+    /// Suspends the next `send` whose frame matches, until `releaseHeldSend()`.
+    func holdSend(where predicate: @escaping @Sendable ([UInt8]) -> Bool) {
+        holdPredicate = predicate
+    }
+
+    func waitForHeldSend() async {
+        guard heldSend == nil else { return }
+        await withCheckedContinuation { continuation in
+            heldWaiters.append(continuation)
+        }
+    }
+
+    func releaseHeldSend() {
+        heldSend?.resume()
+        heldSend = nil
+    }
+
     func waitForSent(count: Int) async {
         guard sentFrames.count < count else { return }
         await withCheckedContinuation { continuation in
