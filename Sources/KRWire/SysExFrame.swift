@@ -50,6 +50,37 @@ public enum SysExFrame {
         return frame
     }
     
+    /// `status` is masked to 7 bits so the frame stays valid SysEx.
+    public static func fileResponse(product: Product, id: RequestID, status: UInt8, payload raw: [UInt8]) -> [UInt8] {
+        let packed = Packed7.encode(raw)
+        var frame: [UInt8] = []
+        frame.reserveCapacity(minResponseLength + packed.count)
+        frame.append(startByte)
+        frame.append(contentsOf: manufacturer)
+        frame.append(product.rawValue)
+        frame.append(protocolMarker)
+        frame.append(bitRequestIDAvailable | id.high5)
+        frame.append(id.low7)
+        frame.append(SysExCommand.file.rawValue)
+        frame.append(status & 0x7F)
+        frame.append(contentsOf: packed)
+        frame.append(endByte)
+        return frame
+    }
+    
+    /// Bytes outside printable ASCII `0x20...0x7E` are replaced with `?`.
+    public static func debugFrame(product: Product, text: String) -> [UInt8] {
+        var frame: [UInt8] = [startByte]
+        frame.append(contentsOf: manufacturer)
+        frame.append(product.rawValue)
+        frame.append(debugMarker)
+        for byte in text.utf8 {
+            frame.append((0x20...0x7E).contains(byte) ? byte : UInt8(ascii: "?"))
+        }
+        frame.append(endByte)
+        return frame
+    }
+    
     /// Expects one complete `F0 … F7` frame with MIDI realtime bytes already
     /// filtered out by the transport. Non-TE SysEx is `.unrelated`.
     public static func parse(_ frame: [UInt8]) throws(KRError) -> ParsedFrame {

@@ -27,6 +27,8 @@ struct KRErrorTests {
         #expect(KRError.disconnected != .alreadyConnected)
         #expect(KRError.cancelled != .alreadyConnected)
         #expect(KRError.deviceNotFound != .disconnected)
+        #expect(KRError.invalidArgument(reason: "a") != .invalidArgument(reason: "b"))
+        #expect(KRError.transferInterrupted != .cancelled)
     }
     
     @Test(arguments: [
@@ -41,12 +43,18 @@ struct KRErrorTests {
         .cancelled,
         .deviceNotFound,
         .transportFailure(operation: "MIDIClientCreateWithBlock", status: -10830),
-        .malformedResponse(reason: "short payload")
+        .malformedResponse(reason: "short payload"),
+        .invalidArgument(reason: "name"),
+        .transferInterrupted
     ])
     func descriptionIsNotEmpty(error: KRError) {
         #expect(!error.description.isEmpty)
     }
     
+    @Test func transferInterruptedAsksForAPowerCycle() {
+        #expect(KRError.transferInterrupted.description.contains("power-cycle"))
+    }
+
     @Test func descriptionsContainAssociatedValues() {
         #expect(KRError.frameTooShort(length: 6).description == "SysEx frame is too short (6 bytes)")
         #expect(KRError.invalidDataByte(offset: 9, value: 0xF8).description
@@ -67,5 +75,6 @@ struct KRErrorTests {
             == "MIDISendEventList failed with status -50")
         #expect(KRError.malformedResponse(reason: "short payload").description
             == "Malformed response: short payload")
+        #expect(KRError.invalidArgument(reason: "name").description == "Invalid argument: name")
     }
 }

@@ -32,6 +32,11 @@ public enum KRError: Error, Equatable, Sendable {
     case transportFailure(operation: String, status: Int32)
     
     case malformedResponse(reason: String)
+    
+    case invalidArgument(reason: String)
+    
+    /// A GET/PUT was cut short; the device must be power-cycled before the next write.
+    case transferInterrupted
 }
 
 extension KRError: CustomStringConvertible {
@@ -61,6 +66,10 @@ extension KRError: CustomStringConvertible {
             return "\(operation) failed with status \(status)"
         case .malformedResponse(let reason):
             return "Malformed response: \(reason)"
+        case .invalidArgument(let reason):
+            return "Invalid argument: \(reason)"
+        case .transferInterrupted:
+            return "A previous transfer was interrupted; power-cycle the device before the next write"
         }
     }
 }

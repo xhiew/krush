@@ -114,4 +114,64 @@ struct SysExFrameTests {
             try SysExFrame.parse([0xF0, 0x00, 0x20, 0x76, 0x33, 0x33, 0xC3, 0xF7])
         }
     }
+    
+    @Test func buildsFileResponseByteExact() {
+        let raw: [UInt8] = [0x00, 0x38, 0x03, 0xE8, 0x1D, 0x00, 0x00, 0x04, 0xD2]
+            + Array("056.pcm".utf8) + [0x00]
+        let frame = SysExFrame.fileResponse(product: .ep133, id: RequestID(0x302), status: 0, payload: raw)
+        #expect(frame == [
+            0xF0, 0x00, 0x20, 0x76, 0x33, 0x40, 0x26, 0x02, 0x05, 0x00,
+            0x08, 0x00, 0x38, 0x03, 0x68, 0x1D, 0x00, 0x00, 0x02, 0x04,
+            0x52, 0x30, 0x35, 0x36, 0x2E, 0x70, 0x00, 0x63, 0x6D, 0x00, 0xF7
+        ])
+    }
+    
+    @Test(arguments: [Product.ep133, .ep40], [0, 1, 7, 433])
+    func roundTripsResponses(product: Product, length: Int) throws {
+        var generator = SeededGenerator(seed: UInt64(length) &+ 5)
+        let payload = (0..<length).map { _ in UInt8.random(in: 0...255, using: &generator) }
+        let frame = SysExFrame.fileResponse(product: product, id: RequestID(0x7A1), status: 0, payload: payload)
+        #expect(frame.dropFirst().dropLast().allSatisfy { $0 < 0x80 })
+        #expect(try SysExFrame.parse(frame) == .response(FileResponse(
+            product: product,
+            id: RequestID(0x7A1),
+            command: SysExCommand.file.rawValue,
+            status: 0,
+            payload: payload
+        )))
+    }
+    
+    @Test func responseStatusIsMaskedAndCarriesReason() throws {
+        let frame = SysExFrame.fileResponse(
+            product: .ep133,
+            id: RequestID(1),
+            status: 1,
+            payload: Array("invalid id".utf8)
+        )
+        guard case .response(let response) = try SysExFrame.parse(frame) else {
+            Issue.record("expected response")
+            return
+        }
+        #expect(response.reason == "invalid id")
+        let masked = SysExFrame.fileResponse(product: .ep133, id: RequestID(1), status: 0x81, payload: [])
+        #expect(masked[SysExFrame.statusIndex] == 0x01)
+    }
+    
+    @Test func buildsDebugFrame() throws {
+        let frame = SysExFrame.debugFrame(product: .ep40, text: "err pattern 213 2_5_1")
+        #expect(frame[4] == 0x3C)
+        #expect(frame[5] == 0x33)
+        #expect(try SysExFrame.parse(frame) == .debug(DebugFrame(product: .ep40, text: "err pattern 213 2_5_1")))
+    }
+    
+    @Test func debugFrameReplacesNonASCII() throws {
+        let frame = SysExFrame.debugFrame(product: .ep133, text: "caf\u{E9}")
+        #expect(frame.dropFirst().dropLast().allSatisfy { $0 < 0x80 })
+        guard case .debug(let debug) = try SysExFrame.parse(frame) else {
+            Issue.record("expected debug")
+            return
+        }
+        // "é" is two UTF-8 bytes, each replaced by "?".
+        #expect(debug.text == "caf??")
+    }
 }
