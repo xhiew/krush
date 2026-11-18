@@ -11,7 +11,12 @@ let package = Package(
     products: [
         .library(
             name: "Krush",
-            targets: ["KRCore", "KRWire", "KRTransport", "KRFile", "KRSim"]
+            targets: ["KRCore", "KRWire", "KRTransport", "KRFile"]
+        ),
+        // Simulated EP device for tests only; never link into an app target.
+        .library(
+            name: "KRSim",
+            targets: ["KRSim"]
         )
     ],
     targets: [

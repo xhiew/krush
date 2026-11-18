@@ -39,7 +39,7 @@ extension FileClient {
     }
     
     /// `json` is sent verbatim; typing rules belong to the caller.
-    package func setMetadata(fid: UInt16, json: String) async throws(KRError) {
+    @_spi(UnsafeDeviceLab) public func setMetadata(fid: UInt16, json: String) async throws(KRError) {
         _ = try FileCodec.metadataSetRequest(fid: fid, json: json, maxPayload: FileCodec.putPayloadBytes(chunkSize: chunkSize))
         try await withGate { () async throws(KRError) -> Void in
             try await self.prepareMutation()

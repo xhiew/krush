@@ -80,7 +80,7 @@ extension FileClient {
         }
     }
     
-    package func write(
+    @_spi(UnsafeDeviceLab) public func write(
         fid: UInt16,
         parent: UInt16,
         name: String,

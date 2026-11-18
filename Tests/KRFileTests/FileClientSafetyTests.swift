@@ -10,6 +10,7 @@ import KRCore
 import KRSim
 import KRWire
 @testable import KRFile
+@_spi(UnsafeDeviceLab) import KRFile
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct FileClientSafetyTests {

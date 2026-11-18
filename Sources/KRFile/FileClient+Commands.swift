@@ -49,7 +49,7 @@ extension FileClient {
         }
     }
     
-    package func delete(fid: UInt16) async throws(KRError) {
+    @_spi(UnsafeDeviceLab) public func delete(fid: UInt16) async throws(KRError) {
         try await withGate { () async throws(KRError) -> Void in
             try await self.prepareMutation()
             try await self.reinitIfIdle()
