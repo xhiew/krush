@@ -190,4 +190,21 @@ struct SimTransportTests {
         await waiter.value
         #expect(await sim.sentFrames.count < 5)
     }
+    
+    @Test func injectSkipTimesAndClearFaults() async throws {
+        let sim = makeSim()
+        let collector = try await connected(sim)
+        await sim.inject(.silence(opcode: [0x0B]), skip: 1, times: 1)
+        for id in 1...3 {
+            try await sim.send(request(statRequest, id: UInt16(id)))
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        #expect(await collector.frames.count == 2)
+        await sim.inject(.silence(opcode: [0x0B]))
+        await sim.clearFaults()
+        try await sim.send(request(statRequest, id: 4))
+        await waitForFrames(collector, count: 3)
+        #expect(await collector.frames.count == 3)
+        await sim.disconnect()
+    }
 }

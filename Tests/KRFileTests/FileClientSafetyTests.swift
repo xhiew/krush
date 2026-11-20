@@ -172,4 +172,85 @@ struct FileClientSafetyTests {
         #expect(lastPage! < stat! && lastPage! < list!)
         await client.disconnect()
     }
+    
+    // MARK: - Guard hooks
+    
+    @Test func preflightMutationWaitsOnFreshSession() async throws {
+        let (client, transport) = Self.make()
+        try await client.connect()
+        let sentBefore = await transport.sentFrames.count
+        let start = ContinuousClock.now
+        try await client.preflightMutation()
+        #expect(ContinuousClock.now - start >= .milliseconds(150))
+        #expect(await transport.sentFrames.count == sentBefore)
+        await client.disconnect()
+    }
+    
+    @Test func preflightMutationReturnsImmediatelyAfterListening() async throws {
+        let (client, _) = Self.make()
+        try await client.connect()
+        try await Task.sleep(for: .milliseconds(400))
+        let start = ContinuousClock.now
+        try await client.preflightMutation()
+        #expect(ContinuousClock.now - start < .milliseconds(150))
+        await client.disconnect()
+    }
+    
+    @Test func preflightMutationReportsDebugFrame() async throws {
+        let (client, transport) = Self.make()
+        try await client.connect()
+        await transport.enterDebugLoop(text: "err boom")
+        let error = await Self.error { try await client.preflightMutation() }
+        guard case .deviceDebugFrame? = error else {
+            Issue.record("unexpected \(String(describing: error))")
+            return
+        }
+        #expect(await client.isHalted)
+        await client.disconnect()
+    }
+    
+    @Test func preflightMutationRefusesInterruptedTransfer() async throws {
+        let transport = SimTransport(device: SimDevice(), debugPeriod: .milliseconds(100))
+        let client = FileClient(
+            transport: transport,
+            product: .ep133,
+            configuration: SimHarness.configuration(),
+            interruptedTransfer: true
+        )
+        try await client.connect()
+        let error = await Self.error { try await client.preflightMutation() }
+        #expect(error == .transferInterrupted)
+        await client.disconnect()
+    }
+    
+    @Test func connectionStateAndGeneration() async throws {
+        let (client, _) = Self.make()
+        #expect(await client.isConnected == false)
+        try await client.connect()
+        #expect(await client.isConnected)
+        let first = await client.connectionGeneration
+        await client.disconnect()
+        #expect(await client.isConnected == false)
+        try await client.connect()
+        #expect(await client.connectionGeneration != first)
+        await client.disconnect()
+    }
+    
+    @Test func metadataLimitMatchesCodec() async throws {
+        let (client, _) = Self.make(nodes: [Self.sample(1, count: 4)])
+        try await client.connect()
+        let limit = await client.maxMetadataJSONBytes
+        #expect(limit == 428)
+        func json(_ count: Int) -> String {
+            "{\"k\":\"" + String(repeating: "a", count: count - 8) + "\"}"
+        }
+        try await client.setMetadata(fid: 1, json: json(limit))
+        let error = await Self.error { try await client.setMetadata(fid: 1, json: json(limit + 1)) }
+        guard case .invalidArgument? = error else {
+            Issue.record("unexpected \(String(describing: error))")
+            return
+        }
+        #expect(await client.maxWriteDataBytes > 0)
+        await client.disconnect()
+    }
 }

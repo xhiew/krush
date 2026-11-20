@@ -14,6 +14,9 @@ public struct SimFileSystem: Sendable {
     
     private var nodes: [UInt16: SimNode] = [:]
     
+    /// Metadata that outlived a deleted fid; only filled by a device with `ghostMetadata`.
+    public internal(set) var ghosts: [UInt16: [String: String]] = [:]
+    
     public init() {
         insert(SimNode(fid: 0, parent: 0, flags: Self.directoryFlags, name: "/"))
         insert(SimNode(fid: Self.soundsFID, parent: 0, flags: Self.directoryFlags, name: "sounds"))

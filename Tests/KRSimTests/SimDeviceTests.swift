@@ -297,4 +297,63 @@ struct SimDeviceTests {
         #expect(device.receive([0xF0, 0xF7]).isEmpty)
         #expect(device.receive([]).isEmpty)
     }
+    
+    @Test func ackWithoutEffectKeepsDeleteTarget() throws {
+        var device = makeDevice(slots: [6: 4])
+        device.inject(.ackWithoutEffect(opcode: [0x06]))
+        #expect(try send(&device, [0x06] + be16(6))?.status == 0)
+        #expect(device.fileSystem.node(6) != nil)
+    }
+    
+    @Test func ackWithoutEffectKeepsMetadata() throws {
+        var device = makeDevice(slots: [7: 4])
+        let json = Array(#"{"name":"a"}"#.utf8)
+        _ = try send(&device, cat([0x07, 0x01], be16(7), json, [0]))
+        device.inject(.ackWithoutEffect(opcode: [0x07, 0x01]))
+        let other = Array(#"{"name":"b"}"#.utf8)
+        #expect(try send(&device, cat([0x07, 0x01], be16(7), other, [0]))?.status == 0)
+        #expect(device.fileSystem.node(7)?.metadata == ["name": "\"a\""])
+    }
+    
+    @Test func corruptCommitFlipsFirstByte() throws {
+        var device = makeDevice()
+        device.inject(.corruptCommit)
+        let data = pcm(100)
+        try putAll(&device, fid: 61, data: data)
+        let stored = try #require(device.fileSystem.node(61)?.data)
+        #expect(stored[0] != data[0])
+        #expect(Array(stored.dropFirst()) == Array(data.dropFirst()))
+    }
+    
+    @Test func skipAndTimesLimitAFault() throws {
+        var device = makeDevice(slots: [56: 4])
+        device.inject(.silence(opcode: [0x0B]), skip: 1, times: 1)
+        #expect(try send(&device, [0x0B] + be16(56))?.status == 0)
+        #expect(try send(&device, [0x0B] + be16(56)) == nil)
+        #expect(try send(&device, [0x0B] + be16(56))?.status == 0)
+    }
+    
+    @Test func ghostMetadataSurvivesDeleteAndMergesOnPut() throws {
+        var device = SimDevice(fileSystem: {
+            var fileSystem = SimFileSystem()
+            var node = SimFileSystem.sample(slot: 9, pcm: pcm(4))
+            node.metadata = ["name": "\"kick\""]
+            fileSystem.insert(node)
+            return fileSystem
+        }(), ghostMetadata: true)
+        #expect(try send(&device, [0x06] + be16(9))?.status == 0)
+        let list = try send(&device, [0x04] + be16(0) + be16(1000))
+        #expect(list?.payload == be16(0))
+        let ghost = try send(&device, [0x07, 0x02] + be16(9) + be16(0))
+        #expect(ghost?.payload == cat(be16(0), Array(#"{"name":"kick"}"#.utf8), [0]))
+        try putAll(&device, fid: 9, data: pcm(10))
+        #expect(device.fileSystem.node(9)?.metadata == ["name": "\"kick\""])
+    }
+    
+    @Test func withoutGhostMetadataDeletedSlotIsGone() throws {
+        var device = makeDevice(slots: [9: 4])
+        _ = try send(&device, cat([0x07, 0x01], be16(9), Array(#"{"name":"kick"}"#.utf8), [0]))
+        _ = try send(&device, [0x06] + be16(9))
+        #expect(try send(&device, [0x07, 0x02] + be16(9) + be16(0))?.reason == "invalid id")
+    }
 }

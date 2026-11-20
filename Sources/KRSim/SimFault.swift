@@ -11,4 +11,8 @@ public enum SimFault: Sendable, Equatable {
     case silence(opcode: [UInt8])
     case reject(opcode: [UInt8], reason: String)
     case debugLoop(onOpcode: [UInt8], text: String)
+    /// Answers status 0 without changing anything.
+    case ackWithoutEffect(opcode: [UInt8])
+    /// Flips the bits of byte 0 when a PUT commits.
+    case corruptCommit
 }

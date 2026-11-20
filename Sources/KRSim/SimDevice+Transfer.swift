@@ -97,13 +97,22 @@ extension SimDevice {
     }
     
     private mutating func commit(_ session: PutSession) {
+        var data = session.buffer
+        let corrupt = !consumeFaults { $0 == .corruptCommit }.isEmpty
+        if corrupt, !data.isEmpty {
+            data[0] = ~data[0]
+        }
+        var metadata = fileSystem.node(session.fid)?.metadata ?? [:]
+        if ghostMetadata, let ghost = fileSystem.ghosts.removeValue(forKey: session.fid) {
+            metadata.merge(ghost) { current, _ in current }
+        }
         fileSystem.insert(SimNode(
             fid: session.fid,
             parent: session.parent,
             flags: session.flags,
             name: session.name,
-            data: session.buffer,
-            metadata: fileSystem.node(session.fid)?.metadata ?? [:]
+            data: data,
+            metadata: metadata
         ))
     }
 }

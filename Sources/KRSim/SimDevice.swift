@@ -27,6 +27,13 @@ public struct SimDevice: Sendable {
         var buffer: [UInt8] = []
     }
     
+    struct FaultRule: Sendable {
+        var fault: SimFault
+        var skip: Int
+        /// `nil` never expires.
+        var remaining: Int?
+    }
+    
     static let getPageBytes = 324
     static let overlapText = "err lfs 6327 2_5_1"
     static let readPastEOFText = "err 82 2_5_1"
@@ -37,13 +44,15 @@ public struct SimDevice: Sendable {
     public let listEntriesPerPage: Int
     public var putEchoesPage: Bool
     public var metadataPageBytes: Int
+    public let ghostMetadata: Bool
     
     public internal(set) var fileSystem: SimFileSystem
     public private(set) var isLooping = false
     public private(set) var debugText: String?
     public internal(set) var playedFIDs: [UInt16] = []
     
-    var faults: [SimFault] = []
+    var faults: [FaultRule] = []
+    var ackWithoutEffectActive = false
     var getSession: GetSession?
     var putSession: PutSession?
     var getAbandoned = false
@@ -54,7 +63,8 @@ public struct SimDevice: Sendable {
         chunkSize: UInt32 = 512,
         listEntriesPerPage: Int = 8,
         putEchoesPage: Bool = false,
-        metadataPageBytes: Int = 300
+        metadataPageBytes: Int = 300,
+        ghostMetadata: Bool = false
     ) {
         self.product = product
         self.fileSystem = fileSystem
@@ -62,10 +72,16 @@ public struct SimDevice: Sendable {
         self.listEntriesPerPage = max(1, listEntriesPerPage)
         self.putEchoesPage = putEchoesPage
         self.metadataPageBytes = max(1, metadataPageBytes)
+        self.ghostMetadata = ghostMetadata
     }
     
     public mutating func inject(_ fault: SimFault) {
-        faults.append(fault)
+        faults.append(FaultRule(fault: fault, skip: 0, remaining: nil))
+    }
+    
+    /// Ignores the first `skip` matches, then applies the fault `times` times (`nil` = for good).
+    public mutating func inject(_ fault: SimFault, skip: Int, times: Int?) {
+        faults.append(FaultRule(fault: fault, skip: max(0, skip), remaining: times.map { max(0, $0) }))
     }
     
     public mutating func clearFaults() {
@@ -95,25 +111,48 @@ public struct SimDevice: Sendable {
               request.command == SysExCommand.file.rawValue,
               !isLooping else { return [] }
         let payload = request.payload
-        if let loop = faults.compactMap({ fault -> String? in
-            guard case .debugLoop(let opcode, let text) = fault, payload.starts(with: opcode) else { return nil }
-            return text
-        }).first {
-            enterDebugLoop(text: loop)
+        let active = consumeFaults { fault in
+            switch fault {
+            case .silence(let opcode), .reject(let opcode, _), .debugLoop(let opcode, _), .ackWithoutEffect(let opcode):
+                return payload.starts(with: opcode)
+            case .corruptCommit:
+                return false
+            }
+        }
+        for fault in active {
+            if case .debugLoop(_, let text) = fault {
+                enterDebugLoop(text: text)
+                return []
+            }
+        }
+        if active.contains(where: { if case .silence = $0 { true } else { false } }) {
             return []
         }
-        if faults.contains(where: { fault in
-            guard case .silence(let opcode) = fault else { return false }
-            return payload.starts(with: opcode)
-        }) {
-            return []
-        }
-        for fault in faults {
-            if case .reject(let opcode, let reason) = fault, payload.starts(with: opcode) {
+        for fault in active {
+            if case .reject(_, let reason) = fault {
                 return reject(request, reason)
             }
         }
+        ackWithoutEffectActive = active.contains { if case .ackWithoutEffect = $0 { true } else { false } }
+        defer { ackWithoutEffectActive = false }
         return handle(request)
+    }
+    
+    /// Every matching rule counts this occurrence; the returned faults are the ones in effect for it.
+    mutating func consumeFaults(matching matches: (SimFault) -> Bool) -> [SimFault] {
+        var active: [SimFault] = []
+        for index in faults.indices where matches(faults[index].fault) {
+            if faults[index].skip > 0 {
+                faults[index].skip -= 1
+                continue
+            }
+            if let remaining = faults[index].remaining {
+                guard remaining > 0 else { continue }
+                faults[index].remaining = remaining - 1
+            }
+            active.append(faults[index].fault)
+        }
+        return active
     }
     
     func respond(_ request: FileRequest, status: UInt8 = 0, _ payload: [UInt8] = []) -> [[UInt8]] {
@@ -184,7 +223,14 @@ public struct SimDevice: Sendable {
         guard payload.count == 3, let fid = SimBytes.u16(payload, at: 1) else {
             return reject(request, "invalid request")
         }
-        guard fileSystem.remove(fid) != nil else { return reject(request, "invalid id") }
+        guard let removed = fileSystem.node(fid) else { return reject(request, "invalid id") }
+        if ackWithoutEffectActive {
+            return respond(request)
+        }
+        fileSystem.remove(fid)
+        if ghostMetadata {
+            fileSystem.ghosts[fid] = removed.metadata
+        }
         return respond(request)
     }
     

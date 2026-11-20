@@ -85,6 +85,14 @@ public actor SimTransport: Transport {
         device.inject(fault)
     }
     
+    public func inject(_ fault: SimFault, skip: Int, times: Int?) {
+        device.inject(fault, skip: skip, times: times)
+    }
+    
+    public func clearFaults() {
+        device.clearFaults()
+    }
+    
     /// The first debug frame comes one `debugPeriod` after the call.
     public func enterDebugLoop(text: String) {
         device.enterDebugLoop(text: text)

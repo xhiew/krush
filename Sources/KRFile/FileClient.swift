@@ -76,8 +76,25 @@ public actor FileClient {
         sessionID
     }
     
-    var isHalted: Bool {
+    package var isHalted: Bool {
         halted != nil
+    }
+    
+    package var isConnected: Bool {
+        state == .connected
+    }
+    
+    package var connectionGeneration: UInt64 {
+        sessionID
+    }
+    
+    /// Same JSON limit as `FileCodec.metadataSetRequest`: opcode, fid and NUL take 5 bytes.
+    package var maxMetadataJSONBytes: Int {
+        FileCodec.putPayloadBytes(chunkSize: Int(chunkSize)) - 5
+    }
+    
+    package var maxWriteDataBytes: Int {
+        FileCodec.putPayloadBytes(chunkSize: Int(chunkSize)) * Int(UInt16.max)
     }
     
     public func connect() async throws(KRError) {
@@ -221,6 +238,13 @@ public actor FileClient {
     func reinitIfIdle() async throws(KRError) {
         guard ContinuousClock.now - lastSuccess > configuration.idleReinit else { return }
         try await initialize()
+    }
+    
+    /// Runs the mutation preflight under the gate and sends nothing.
+    package func preflightMutation() async throws(KRError) {
+        try await withGate { () async throws(KRError) -> Void in
+            try await self.prepareMutation()
+        }
     }
     
     /// Gate holder only. Call before any frame of a write command is sent.

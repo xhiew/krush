@@ -18,6 +18,9 @@ extension SimDevice {
         guard let values = SimJSONObject.parse(SimBytes.cString(payload, at: 4)) else {
             return reject(request, "invalid json")
         }
+        if ackWithoutEffectActive {
+            return respond(request)
+        }
         node.metadata.merge(values) { _, new in new }
         fileSystem.insert(node)
         return respond(request)
@@ -28,11 +31,18 @@ extension SimDevice {
         guard let fid = SimBytes.u16(payload, at: 2), let page = SimBytes.u16(payload, at: 4) else {
             return reject(request, "invalid request")
         }
-        guard let node = fileSystem.node(fid) else { return reject(request, "invalid id") }
-        var values = node.metadata
+        let stored: [String: String]
+        if let node = fileSystem.node(fid) {
+            stored = node.metadata
+        } else if ghostMetadata, let ghost = fileSystem.ghosts[fid] {
+            stored = ghost
+        } else {
+            return reject(request, "invalid id")
+        }
+        var values = stored
         if payload.count > Self.getHeaderBytes {
             let key = SimBytes.cString(payload, at: Self.getHeaderBytes)
-            values = node.metadata[key].map { [key: $0] } ?? [:]
+            values = stored[key].map { [key: $0] } ?? [:]
         }
         let text = Array(SimJSONObject.serialize(values).utf8)
         let pageCount = max(1, (text.count + metadataPageBytes - 1) / metadataPageBytes)

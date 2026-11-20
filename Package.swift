@@ -11,7 +11,7 @@ let package = Package(
     products: [
         .library(
             name: "Krush",
-            targets: ["KRCore", "KRWire", "KRTransport", "KRFile"]
+            targets: ["KRCore", "KRWire", "KRTransport", "KRFile", "KRGuard"]
         ),
         // Simulated EP device for tests only; never link into an app target.
         .library(
@@ -48,6 +48,13 @@ let package = Package(
             ]
         ),
         .target(
+            name: "KRGuard",
+            dependencies: ["KRCore", "KRFile"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
+        .target(
             name: "KRSim",
             dependencies: ["KRCore", "KRWire", "KRTransport"],
             swiftSettings: [
@@ -78,6 +85,13 @@ let package = Package(
         .testTarget(
             name: "KRFileTests",
             dependencies: ["KRFile", "KRSim", "KRTransport", "KRWire", "KRCore"],
+            swiftSettings: [
+                .enableUpcomingFeature("ApproachableConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "KRGuardTests",
+            dependencies: ["KRGuard", "KRFile", "KRSim", "KRTransport", "KRWire", "KRCore"],
             swiftSettings: [
                 .enableUpcomingFeature("ApproachableConcurrency")
             ]
